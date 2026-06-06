@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "AI Simultaneous Interpretation Assistant",
+  "description": "Real-time translated subtitles and revision-highlighted history for web videos.",
+  "version": "0.1.0",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "sidePanel"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:8080/*",
+    "ws://127.0.0.1:8080/*"
+  ],
+  "action": {
+    "default_title": "AI 同声传译助手"
+  },
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "src/content.js"
+      ],
+      "css": [
+        "src/content.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "side_panel": {
+    "default_path": "src/panel.html"
+  }
+}

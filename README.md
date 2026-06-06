@@ -185,6 +185,47 @@ flowchart LR
 - [docs/API.md](./docs/API.md)：接口文档
 - [docs/TECHNICAL_DESIGN.md](./docs/TECHNICAL_DESIGN.md)：技术设计文档
 
+## 当前工程结构
+
+```text
+AI_Simultaneous_Interpretation_Assistant/
+  README.md
+  docs/
+  backend/
+  extension/
+```
+
+## Mock 演示链路
+
+当前版本先实现 mock 端到端闭环：
+
+1. 启动 Java 后端。
+2. 在 Chrome / Edge 中加载 `extension/` 插件目录。
+3. 打开任意网页。
+4. 点击插件图标打开右侧面板。
+5. 点击“开始”。
+6. 后端推送 mock 字幕。
+7. 页面底部显示实时弹幕。
+8. 右侧面板追加原文和译文。
+9. 后端推送修正事件后，对应历史记录持续高亮。
+
+## 后端运行
+
+```powershell
+cd backend
+mvn spring-boot:run
+```
+
+如果本机 `mvn` 不在 PATH，可以使用本地 Maven 绝对路径运行。
+
+## 插件加载
+
+1. 打开 Chrome / Edge 扩展管理页面。
+2. 开启开发者模式。
+3. 选择“加载已解压的扩展程序”。
+4. 选择项目下的 `extension/` 目录。
+5. 确认 Java 后端运行在 `http://127.0.0.1:8080`。
+
 ## 当前状态
 
-项目已完成需求确认、产品方案设计、接口设计和技术方案设计，下一步可以开始进行插件和 Java 后端的工程初始化。
+项目已完成需求确认、产品方案设计、接口设计、技术方案设计，以及 mock 版 Java 后端和浏览器插件骨架。
