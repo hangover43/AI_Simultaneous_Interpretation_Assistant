@@ -10,18 +10,67 @@ import org.springframework.web.socket.WebSocketSession;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @Service
 public class MockInterpretationService {
 
     private final ObjectMapper objectMapper;
     private final ScheduledExecutorService executorService = Executors.newScheduledThreadPool(2);
+    private final ConcurrentMap<String, AtomicInteger> chunkCounters = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, AtomicInteger> segmentCounters = new ConcurrentHashMap<>();
 
     public MockInterpretationService(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
+    }
+
+    public void startAudioStream(WebSocketSession socketSession, InterpretationSession interpretationSession) {
+        chunkCounters.put(interpretationSession.sessionId(), new AtomicInteger(0));
+        segmentCounters.put(interpretationSession.sessionId(), new AtomicInteger(0));
+
+        ObjectNode ready = objectMapper.createObjectNode();
+        ready.put("type", "audio_ready");
+        ready.put("sessionId", interpretationSession.sessionId());
+        send(socketSession, ready);
+    }
+
+    public void handleAudioChunk(WebSocketSession socketSession, InterpretationSession interpretationSession, int sequence) {
+        sendAudioAck(socketSession, interpretationSession.sessionId(), sequence);
+
+        int chunkCount = chunkCounters
+                .computeIfAbsent(interpretationSession.sessionId(), ignored -> new AtomicInteger(0))
+                .incrementAndGet();
+
+        if (chunkCount % 3 != 0) {
+            return;
+        }
+
+        Segment segment = nextChunkDrivenSegment(interpretationSession);
+        if (segment == null) {
+            return;
+        }
+
+        sendFinalSegment(socketSession, interpretationSession, segment);
+
+        if ("seg_audio_001".equals(segment.id())) {
+            Segment revised = new Segment(
+                    "seg_audio_001",
+                    "The speaker is talking about inference latency.",
+                    "演讲者正在讨论模型推理延迟。",
+                    true
+            );
+            executorService.schedule(() -> sendRevision(socketSession, interpretationSession, revised), 2400L, TimeUnit.MILLISECONDS);
+        }
+    }
+
+    public void stopAudioStream(String sessionId) {
+        chunkCounters.remove(sessionId);
+        segmentCounters.remove(sessionId);
     }
 
     public void startMockStream(WebSocketSession socketSession, InterpretationSession interpretationSession) {
@@ -43,6 +92,34 @@ public class MockInterpretationService {
                 true
         );
         executorService.schedule(() -> sendRevision(socketSession, interpretationSession, revised), 5600L, TimeUnit.MILLISECONDS);
+    }
+
+    private Segment nextChunkDrivenSegment(InterpretationSession interpretationSession) {
+        int index = segmentCounters
+                .computeIfAbsent(interpretationSession.sessionId(), ignored -> new AtomicInteger(0))
+                .incrementAndGet();
+
+        return switch (index) {
+            case 1 -> new Segment(
+                    "seg_audio_001",
+                    "The speaker is talking about inference latency.",
+                    "演讲者正在讨论推理延迟。",
+                    false
+            );
+            case 2 -> new Segment(
+                    "seg_audio_002",
+                    "The system keeps a short context window.",
+                    "系统会保留一个较短的上下文窗口。",
+                    false
+            );
+            case 3 -> new Segment(
+                    "seg_audio_003",
+                    "Previous translations can be refined later.",
+                    "之前的翻译可以在之后被精修。",
+                    false
+            );
+            default -> null;
+        };
     }
 
     private void sendFinalSegment(WebSocketSession socketSession, InterpretationSession interpretationSession, Segment segment) {
@@ -86,5 +163,13 @@ public class MockInterpretationService {
         } catch (IOException ignored) {
             // The browser may close the socket while mock events are still scheduled.
         }
+    }
+
+    private void sendAudioAck(WebSocketSession socketSession, String sessionId, int sequence) {
+        ObjectNode ack = objectMapper.createObjectNode();
+        ack.put("type", "audio_ack");
+        ack.put("sessionId", sessionId);
+        ack.put("sequence", sequence);
+        send(socketSession, ack);
     }
 }

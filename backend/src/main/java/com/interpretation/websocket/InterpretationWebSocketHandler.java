@@ -61,17 +61,23 @@ public class InterpretationWebSocketHandler extends TextWebSocketHandler {
             return;
         }
 
-        if ("mock_start".equals(type) || "audio_start".equals(type)) {
+        if ("audio_start".equals(type)) {
+            mockInterpretationService.startAudioStream(socketSession, interpretationSession.get());
+            return;
+        }
+
+        if ("mock_start".equals(type)) {
             mockInterpretationService.startMockStream(socketSession, interpretationSession.get());
             return;
         }
 
         if ("audio_chunk".equals(type)) {
-            sendAck(socketSession, sessionId, root.path("sequence").asInt(-1));
+            mockInterpretationService.handleAudioChunk(socketSession, interpretationSession.get(), root.path("sequence").asInt(-1));
             return;
         }
 
         if ("audio_end".equals(type)) {
+            mockInterpretationService.stopAudioStream(sessionId);
             sessionService.stopSession(sessionId);
             return;
         }
@@ -82,14 +88,6 @@ public class InterpretationWebSocketHandler extends TextWebSocketHandler {
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
         // Sessions are stopped explicitly by REST or audio_end. Socket close alone is not destructive.
-    }
-
-    private void sendAck(WebSocketSession socketSession, String sessionId, int sequence) throws IOException {
-        ObjectNode ack = objectMapper.createObjectNode();
-        ack.put("type", "audio_ack");
-        ack.put("sessionId", sessionId);
-        ack.put("sequence", sequence);
-        socketSession.sendMessage(new TextMessage(objectMapper.writeValueAsString(ack)));
     }
 
     private void sendError(WebSocketSession socketSession, String sessionId, String code, String message) throws IOException {

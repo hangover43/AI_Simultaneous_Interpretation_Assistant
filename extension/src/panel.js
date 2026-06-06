@@ -5,7 +5,8 @@ const state = {
   sessionId: null,
   socket: null,
   segments: new Map(),
-  activeTabId: null
+  activeTabId: null,
+  capturing: false
 };
 
 const topicInput = document.getElementById("topicInput");
@@ -20,6 +21,12 @@ renderHistory();
 startButton.addEventListener("click", startInterpretation);
 stopButton.addEventListener("click", stopInterpretation);
 clearButton.addEventListener("click", clearHistory);
+
+chrome.runtime.onMessage.addListener((message) => {
+  if (message?.type === "audio_chunk") {
+    sendAudioChunk(message);
+  }
+});
 
 async function startInterpretation() {
   setStatus("正在创建会话...");
@@ -39,6 +46,8 @@ async function startInterpretation() {
 }
 
 async function stopInterpretation() {
+  await stopTabAudioCapture();
+
   if (state.socket?.readyState === WebSocket.OPEN) {
     state.socket.send(JSON.stringify({
       type: "audio_end",
@@ -54,6 +63,7 @@ async function stopInterpretation() {
   await sendSubtitleMessage({ type: "subtitle_clear" });
   state.socket = null;
   state.sessionId = null;
+  state.capturing = false;
   setStatus("已停止");
   startButton.disabled = false;
   stopButton.disabled = true;
@@ -88,9 +98,27 @@ function connectWebSocket(sessionId) {
   const socket = new WebSocket(`${WS_BASE_URL}?sessionId=${encodeURIComponent(sessionId)}`);
   state.socket = socket;
 
-  socket.addEventListener("open", () => {
-    setStatus("已连接，mock 同传运行中");
+  socket.addEventListener("open", async () => {
+    setStatus("已连接，正在捕获标签页音频...");
     stopButton.disabled = false;
+    socket.send(JSON.stringify({
+      type: "audio_start",
+      sessionId,
+      audio: {
+        format: "webm-opus",
+        sampleRate: 48000,
+        channels: 1
+      }
+    }));
+
+    const captureStarted = await startTabAudioCapture(sessionId);
+    if (captureStarted) {
+      state.capturing = true;
+      setStatus("正在同传当前标签页音频");
+      return;
+    }
+
+    setStatus("标签页音频捕获失败，已切换 mock 演示");
     socket.send(JSON.stringify({
       type: "mock_start",
       sessionId
@@ -145,6 +173,38 @@ function handleServerMessage(message) {
   if (message.type === "error") {
     setStatus(`错误：${message.message}`);
   }
+}
+
+function sendAudioChunk(message) {
+  if (!state.socket || state.socket.readyState !== WebSocket.OPEN || message.sessionId !== state.sessionId) {
+    return;
+  }
+
+  state.socket.send(JSON.stringify({
+    type: "audio_chunk",
+    sessionId: message.sessionId,
+    sequence: message.sequence,
+    timestampMs: message.timestampMs,
+    payloadBase64: message.payloadBase64
+  }));
+}
+
+async function startTabAudioCapture(sessionId) {
+  if (!state.activeTabId) {
+    return false;
+  }
+
+  const response = await chrome.runtime.sendMessage({
+    type: "start_tab_capture",
+    tabId: state.activeTabId,
+    sessionId
+  }).catch(() => null);
+
+  return Boolean(response?.ok);
+}
+
+async function stopTabAudioCapture() {
+  await chrome.runtime.sendMessage({ type: "stop_tab_capture" }).catch(() => {});
 }
 
 function upsertSegment(segment) {
