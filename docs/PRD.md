@@ -194,7 +194,7 @@ AI 同声传译浏览器插件，面向网页视频、网页会议和在线课�
 
 ### 10.2 Java 后端
 
-- Java 21
+- Java 17
 - Spring Boot
 - Spring WebSocket
 - WebClient / HTTP Client 调用外部 AI 服务

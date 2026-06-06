@@ -143,7 +143,7 @@ flowchart LR
 
 ### 后端
 
-- Java 21
+- Java 17
 - Spring Boot
 - Spring WebSocket
 - Jackson
