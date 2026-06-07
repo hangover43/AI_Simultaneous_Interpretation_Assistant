@@ -40,6 +40,10 @@ body {
   font-size: 13px;
 }
 
+#aiProviderStatus {
+  color: #3f6f4e;
+}
+
 .controls {
   padding: 14px 16px 16px;
   border-bottom: 1px solid #dfe3ea;

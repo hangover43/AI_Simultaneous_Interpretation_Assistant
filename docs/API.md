@@ -130,6 +130,77 @@ DELETE /api/sessions/{sessionId}/segments
 }
 ```
 
+### 3.6 获取当前 AI Provider
+
+```http
+GET /api/ai/provider
+```
+
+响应：
+
+```json
+{
+  "provider": "mock",
+  "model": "translategemma:12b",
+  "baseUrl": "http://127.0.0.1:11434"
+}
+```
+
+### 3.7 测试文本翻译
+
+```http
+POST /api/ai/translate-test
+```
+
+请求：
+
+```json
+{
+  "topic": "AI 技术分享",
+  "text": "The model reduces inference latency."
+}
+```
+
+响应：
+
+```json
+{
+  "provider": "ollama",
+  "model": "translategemma:12b",
+  "sourceText": "The model reduces inference latency.",
+  "translation": "该模型降低了推理延迟。",
+  "revised": false
+}
+```
+
+### 3.8 测试文本修正
+
+```http
+POST /api/ai/revise-test
+```
+
+请求：
+
+```json
+{
+  "topic": "AI 技术分享",
+  "sourceText": "The speaker is talking about inference latency.",
+  "translation": "演讲者正在讨论推理延迟。"
+}
+```
+
+响应：
+
+```json
+{
+  "provider": "ollama",
+  "model": "translategemma:12b",
+  "sourceText": "The speaker is talking about inference latency.",
+  "translation": "演讲者正在讨论模型推理延迟。",
+  "revised": true
+}
+```
+
 ## 4. WebSocket
 
 连接地址：

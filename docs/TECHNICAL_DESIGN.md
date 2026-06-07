@@ -133,6 +133,30 @@ flowchart LR
 - 在会话过程中根据高频词、专有名词或翻译不稳定词补充候选术语。
 - 将术语表提供给 ASR、Translation 和 Refiner 使用。
 
+#### AI Provider
+
+职责：
+
+- 封装 ASR、翻译和上下文修正能力。
+- 当前第一版使用 mock provider，便于先验证插件和 WebSocket 流程。
+- 后续接入真实模型时，应替换 provider 实现，而不是改动 WebSocket handler 或前端协议。
+
+当前 provider 接口边界：
+
+```text
+demoSegments(session)
+segmentFromAudioChunk(session, segmentIndex)
+revisionFor(session, segment)
+```
+
+后续真实实现可扩展为：
+
+```text
+transcribe(audio, session)
+translate(sourceText, glossary, session)
+refine(recentSegments, glossary, session)
+```
+
 ## 4. 核心流程
 
 ### 4.1 启动流程

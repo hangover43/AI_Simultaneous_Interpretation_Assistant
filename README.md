@@ -184,6 +184,7 @@ flowchart LR
 - [docs/PRD.md](./docs/PRD.md)：产品需求文档
 - [docs/API.md](./docs/API.md)：接口文档
 - [docs/TECHNICAL_DESIGN.md](./docs/TECHNICAL_DESIGN.md)：技术设计文档
+- [docs/LOCAL_MODEL.md](./docs/LOCAL_MODEL.md)：本地模型接入说明
 
 ## 当前工程结构
 
@@ -230,4 +231,4 @@ mvn spring-boot:run
 
 ## 当前状态
 
-项目已完成需求确认、产品方案设计、接口设计、技术方案设计、mock 版 Java 后端、浏览器插件骨架、标签页音频捕获链路骨架，以及后端 REST / WebSocket 集成测试。
+项目已完成需求确认、产品方案设计、接口设计、技术方案设计、mock 版 Java 后端、Ollama 本地模型 provider、浏览器插件骨架、标签页音频捕获链路骨架，以及后端 REST / WebSocket 集成测试。

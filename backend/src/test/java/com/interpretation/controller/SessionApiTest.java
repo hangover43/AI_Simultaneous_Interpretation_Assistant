@@ -82,4 +82,48 @@ class SessionApiTest {
         mockMvc.perform(delete("/api/sessions/missing-session/segments"))
                 .andExpect(status().isNotFound());
     }
+
+    @Test
+    void aiProviderReturnsCurrentConfiguration() throws Exception {
+        mockMvc.perform(get("/api/ai/provider"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.provider").value("mock"))
+                .andExpect(jsonPath("$.model").value("translategemma:12b"))
+                .andExpect(jsonPath("$.baseUrl").value("http://127.0.0.1:11434"));
+    }
+
+    @Test
+    void aiTranslateTestUsesCurrentProvider() throws Exception {
+        mockMvc.perform(post("/api/ai/translate-test")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "topic": "AI 技术分享",
+                                  "text": "The model reduces inference latency."
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.provider").value("mock"))
+                .andExpect(jsonPath("$.sourceText").value("The model reduces inference latency."))
+                .andExpect(jsonPath("$.translation").value("该模型降低了推理延迟。"))
+                .andExpect(jsonPath("$.revised").value(false));
+    }
+
+    @Test
+    void aiReviseTestUsesCurrentProvider() throws Exception {
+        mockMvc.perform(post("/api/ai/revise-test")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "topic": "AI 技术分享",
+                                  "sourceText": "The speaker is talking about inference latency.",
+                                  "translation": "演讲者正在讨论推理延迟。"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.provider").value("mock"))
+                .andExpect(jsonPath("$.sourceText").value("The speaker is talking about inference latency."))
+                .andExpect(jsonPath("$.translation").value("【mock 修正】演讲者正在讨论推理延迟。"))
+                .andExpect(jsonPath("$.revised").value(true));
+    }
 }

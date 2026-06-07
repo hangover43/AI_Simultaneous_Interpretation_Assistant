@@ -2,6 +2,7 @@ package com.interpretation.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.interpretation.ai.InterpretationAiProvider;
 import com.interpretation.model.InterpretationSession;
 import com.interpretation.model.Segment;
 import org.springframework.stereotype.Service;
@@ -9,7 +10,6 @@ import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
 import java.io.IOException;
-import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Executors;
@@ -21,12 +21,14 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class MockInterpretationService {
 
     private final ObjectMapper objectMapper;
+    private final InterpretationAiProvider aiProvider;
     private final ScheduledExecutorService executorService = Executors.newScheduledThreadPool(2);
     private final ConcurrentMap<String, AtomicInteger> chunkCounters = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, AtomicInteger> segmentCounters = new ConcurrentHashMap<>();
 
-    public MockInterpretationService(ObjectMapper objectMapper) {
+    public MockInterpretationService(ObjectMapper objectMapper, InterpretationAiProvider aiProvider) {
         this.objectMapper = objectMapper;
+        this.aiProvider = aiProvider;
     }
 
     public void startAudioStream(WebSocketSession socketSession, InterpretationSession interpretationSession) {
@@ -50,22 +52,16 @@ public class MockInterpretationService {
             return;
         }
 
-        Segment segment = nextChunkDrivenSegment(interpretationSession);
-        if (segment == null) {
-            return;
-        }
-
-        sendFinalSegment(socketSession, interpretationSession, segment);
-
-        if ("seg_audio_001".equals(segment.id())) {
-            Segment revised = new Segment(
-                    "seg_audio_001",
-                    "The speaker is talking about inference latency.",
-                    "演讲者正在讨论模型推理延迟。",
-                    true
-            );
-            executorService.schedule(() -> sendRevision(socketSession, interpretationSession, revised), 2400L, TimeUnit.MILLISECONDS);
-        }
+        aiProvider.segmentFromAudioChunk(interpretationSession, nextSegmentIndex(interpretationSession))
+                .ifPresent(segment -> {
+                    sendFinalSegment(socketSession, interpretationSession, segment);
+                    aiProvider.revisionFor(interpretationSession, segment)
+                            .ifPresent(revised -> executorService.schedule(
+                                    () -> sendRevision(socketSession, interpretationSession, revised),
+                                    2400L,
+                                    TimeUnit.MILLISECONDS
+                            ));
+                });
     }
 
     public void stopAudioStream(String sessionId) {
@@ -74,52 +70,21 @@ public class MockInterpretationService {
     }
 
     public void startMockStream(WebSocketSession socketSession, InterpretationSession interpretationSession) {
-        List<Segment> segments = List.of(
-                new Segment("seg_001", "The model reduces inference latency.", "该模型降低了推理延迟。", false),
-                new Segment("seg_002", "We use streaming output to improve responsiveness.", "我们使用流式输出来提升响应速度。", false),
-                new Segment("seg_003", "The glossary keeps technical terms consistent.", "术语表可以保持技术术语的一致性。", false)
-        );
+        var segments = aiProvider.demoSegments(interpretationSession);
 
         for (int i = 0; i < segments.size(); i++) {
             Segment segment = segments.get(i);
             executorService.schedule(() -> sendFinalSegment(socketSession, interpretationSession, segment), i * 1600L, TimeUnit.MILLISECONDS);
         }
 
-        Segment revised = new Segment(
-                "seg_001",
-                "The model reduces inference latency.",
-                "该模型降低了模型推理延迟。",
-                true
-        );
-        executorService.schedule(() -> sendRevision(socketSession, interpretationSession, revised), 5600L, TimeUnit.MILLISECONDS);
-    }
-
-    private Segment nextChunkDrivenSegment(InterpretationSession interpretationSession) {
-        int index = segmentCounters
-                .computeIfAbsent(interpretationSession.sessionId(), ignored -> new AtomicInteger(0))
-                .incrementAndGet();
-
-        return switch (index) {
-            case 1 -> new Segment(
-                    "seg_audio_001",
-                    "The speaker is talking about inference latency.",
-                    "演讲者正在讨论推理延迟。",
-                    false
-            );
-            case 2 -> new Segment(
-                    "seg_audio_002",
-                    "The system keeps a short context window.",
-                    "系统会保留一个较短的上下文窗口。",
-                    false
-            );
-            case 3 -> new Segment(
-                    "seg_audio_003",
-                    "Previous translations can be refined later.",
-                    "之前的翻译可以在之后被精修。",
-                    false
-            );
-            default -> null;
-        };
+        if (!segments.isEmpty()) {
+            aiProvider.revisionFor(interpretationSession, segments.get(0))
+                    .ifPresent(revised -> executorService.schedule(
+                            () -> sendRevision(socketSession, interpretationSession, revised),
+                            5600L,
+                            TimeUnit.MILLISECONDS
+                    ));
+        }
     }
 
     private void sendFinalSegment(WebSocketSession socketSession, InterpretationSession interpretationSession, Segment segment) {
@@ -171,5 +136,11 @@ public class MockInterpretationService {
         ack.put("sessionId", sessionId);
         ack.put("sequence", sequence);
         send(socketSession, ack);
+    }
+
+    private int nextSegmentIndex(InterpretationSession interpretationSession) {
+        return segmentCounters
+                .computeIfAbsent(interpretationSession.sessionId(), ignored -> new AtomicInteger(0))
+                .incrementAndGet();
     }
 }

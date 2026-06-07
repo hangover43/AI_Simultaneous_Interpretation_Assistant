@@ -4,3 +4,9 @@ server:
 spring:
   application:
     name: ai-simultaneous-interpretation-backend
+
+ai:
+  provider: mock
+  ollama:
+    base-url: http://127.0.0.1:11434
+    model: translategemma:12b

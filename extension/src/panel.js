@@ -14,9 +14,11 @@ const startButton = document.getElementById("startButton");
 const stopButton = document.getElementById("stopButton");
 const clearButton = document.getElementById("clearButton");
 const connectionStatus = document.getElementById("connectionStatus");
+const aiProviderStatus = document.getElementById("aiProviderStatus");
 const historyList = document.getElementById("historyList");
 
 renderHistory();
+refreshProviderStatus();
 
 startButton.addEventListener("click", startInterpretation);
 stopButton.addEventListener("click", stopInterpretation);
@@ -31,6 +33,7 @@ chrome.runtime.onMessage.addListener((message) => {
 async function startInterpretation() {
   setStatus("正在创建会话...");
   startButton.disabled = true;
+  await refreshProviderStatus();
 
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -92,6 +95,19 @@ async function createSession(topic) {
     throw new Error(`后端返回 ${response.status}`);
   }
   return response.json();
+}
+
+async function refreshProviderStatus() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/ai/provider`);
+    if (!response.ok) {
+      throw new Error(`后端返回 ${response.status}`);
+    }
+    const provider = await response.json();
+    aiProviderStatus.textContent = `AI: ${provider.provider} / ${provider.model}`;
+  } catch (error) {
+    aiProviderStatus.textContent = "AI: 后端未连接";
+  }
 }
 
 function connectWebSocket(sessionId) {
