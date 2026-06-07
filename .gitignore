@@ -3,3 +3,5 @@ extension/dist/
 node_modules/
 .DS_Store
 *.log
+.edge-test-profile/
+tools/whisper.cpp/

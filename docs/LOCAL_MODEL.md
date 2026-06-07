@@ -1,91 +1,65 @@
-# 本地模型接入说明
+# 本地模型方案
 
-## 1. 推荐方案
+当前版本优先完成“文本翻译 + 前文修正 + 真实网页音频转写”的可用闭环，全部在本机运行。
 
-第一版本地模型建议使用 Ollama 运行 Qwen 系列模型，优先接入文本翻译和上下文修正。
+## 默认配置
 
-你本机已经有可用模型，当前推荐优先使用：
+- 翻译模型：`qwen2.5:3b`
+- 模型运行时：Ollama
+- ASR：whisper.cpp
+- ASR 模型：`ggml-base.bin`
+- 音频转换：ffmpeg
+
+`qwen2.5:3b` 被选为当前默认模型，是因为它在本机测试中响应速度明显优于 `translategemma:12b`，更适合实时字幕场景。
+
+## 启动后端
+
+```powershell
+cmd.exe /c scripts\launch-backend-ollama.cmd
+```
+
+该脚本会设置：
 
 ```text
-translategemma:12b
+AI_PROVIDER=ollama
+AI_OLLAMA_BASE_URL=http://127.0.0.1:11434
+AI_OLLAMA_MODEL=qwen2.5:3b
 ```
 
-选择理由：
+检查后端当前模型：
 
-- 已经安装在本机，无需额外下载。
-- 翻译测试输出干净，适合先接入“文本翻译 + 修正”链路。
-- 相比 reasoning 模型，更适合作为字幕翻译模型。
+```powershell
+Invoke-RestMethod -Uri http://127.0.0.1:8080/api/ai/provider
+```
 
-可选模型：
+## 处理链路
 
 ```text
-qwen3:8b   # 如果后续想下载更通用的多语言模型
-qwen3:4b   # 机器配置较弱时使用
-qwen3:14b  # 显存/内存更充足时使用
+浏览器 tabCapture
+  -> MediaRecorder 生成 webm/opus 分片
+  -> WebSocket 发送到后端
+  -> ffmpeg 转为 16k 单声道 wav
+  -> whisper.cpp 转写原文
+  -> Ollama 翻译为中文
+  -> 网页字幕 + 右侧历史面板
 ```
 
-## 2. 需要安装
+## 模型文件
 
-先安装 Ollama。
+`tools/whisper.cpp/` 存放本地下载的 whisper.cpp 可执行文件和模型。该目录被 `.gitignore` 忽略，不提交到仓库。
 
-如果后续需要下载推荐通用模型，可执行：
+当前期望路径：
 
-```powershell
-ollama pull qwen3:8b
+```text
+tools/whisper.cpp/Release/whisper-cli.exe
+tools/whisper.cpp/models/ggml-base.bin
 ```
 
-确认 Ollama 服务可用：
+如果换电脑运行，需要重新准备 whisper.cpp 和 `ggml-base.bin`，或修改 `backend/src/main/resources/application.yml` 里的路径。
 
-```powershell
-Invoke-RestMethod -Uri http://127.0.0.1:11434/api/tags
-```
+## 可选优化
 
-## 3. 后端启用 Ollama Provider
-
-默认配置仍然是 mock：
-
-```yaml
-ai:
-  provider: mock
-```
-
-如需启用本地模型，启动后端时设置：
-
-```powershell
-$env:AI_PROVIDER="ollama"
-$env:AI_OLLAMA_BASE_URL="http://127.0.0.1:11434"
-$env:AI_OLLAMA_MODEL="translategemma:12b"
-cd backend
-& 'J:\Environment\apache-maven-3.9.16\bin\mvn.cmd' spring-boot:run
-```
-
-如果本机 `mvn` 已在 PATH 中，也可以使用：
-
-```powershell
-mvn spring-boot:run
-```
-
-## 4. 当前接入范围
-
-当前 Ollama provider 已接入：
-
-- 文本翻译
-- 上下文修正
-- 术语表约束
-
-暂未接入：
-
-- 真实 ASR
-- 音频直接转文本
-
-当前音频链路仍然通过 mock 源文本模拟 ASR 输出，然后调用本地模型进行翻译和修正。
-
-## 5. 后续计划
-
-下一步可以继续接入本地 ASR，例如：
-
-- Whisper.cpp
-- faster-whisper
-- sherpa-onnx
-
-本项目当前优先级是先打通文本翻译和修正，因此 ASR 暂后。
+- 降低分片时长：把 `extension/src/offscreen.js` 的 5000ms 改为 3000ms，可降低字幕延迟，但 ASR 调用频率会增加。
+- 更快 ASR：可迁移到 faster-whisper 或 sherpa-onnx，降低实时转写延迟。
+- 更强翻译：可尝试 `qwen3:4b` / `qwen3:8b`，但要重新评估响应速度。
+- 更强修正：保留最近 N 条 segment，把术语和上下文传给修正 prompt，只高亮历史记录，不回放已经过去的弹幕。

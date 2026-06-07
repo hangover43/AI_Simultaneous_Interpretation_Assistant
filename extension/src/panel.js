@@ -6,7 +6,10 @@ const state = {
   socket: null,
   segments: new Map(),
   activeTabId: null,
-  capturing: false
+  pendingStreamId: null,
+  capturing: false,
+  captureError: null,
+  subtitleError: null
 };
 
 const topicInput = document.getElementById("topicInput");
@@ -31,15 +34,32 @@ chrome.runtime.onMessage.addListener((message) => {
 });
 
 async function startInterpretation() {
-  setStatus("正在创建会话...");
+  setStatus("正在准备当前标签页音频...");
   startButton.disabled = true;
   await refreshProviderStatus();
 
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     state.activeTabId = tab?.id ?? null;
+    state.pendingStreamId = null;
+    state.captureError = null;
+    state.subtitleError = null;
 
-    const session = await createSession(topicInput.value.trim() || "通用会议");
+    if (!state.activeTabId) {
+      throw new Error("没有可用的活动标签页");
+    }
+
+    try {
+      state.pendingStreamId = await getTabAudioStreamId(state.activeTabId);
+    } catch (error) {
+      state.captureError = error.message;
+    }
+
+    await ensureSubtitleRuntime().catch((error) => {
+      state.subtitleError = error.message;
+    });
+
+    const session = await createSession(topicInput.value.trim() || "通用视频");
     state.sessionId = session.sessionId;
     connectWebSocket(session.sessionId);
   } catch (error) {
@@ -66,6 +86,7 @@ async function stopInterpretation() {
   await sendSubtitleMessage({ type: "subtitle_clear" });
   state.socket = null;
   state.sessionId = null;
+  state.pendingStreamId = null;
   state.capturing = false;
   setStatus("已停止");
   startButton.disabled = false;
@@ -115,7 +136,7 @@ function connectWebSocket(sessionId) {
   state.socket = socket;
 
   socket.addEventListener("open", async () => {
-    setStatus("已连接，正在捕获标签页音频...");
+    setStatus("已连接后端，正在启动音频捕获...");
     stopButton.disabled = false;
     socket.send(JSON.stringify({
       type: "audio_start",
@@ -130,11 +151,12 @@ function connectWebSocket(sessionId) {
     const captureStarted = await startTabAudioCapture(sessionId);
     if (captureStarted) {
       state.capturing = true;
-      setStatus("正在同传当前标签页音频");
+      const subtitleNote = state.subtitleError ? `；字幕注入失败：${state.subtitleError}` : "";
+      setStatus(`正在实时翻译当前标签页音频${subtitleNote}`);
       return;
     }
 
-    setStatus("标签页音频捕获失败，已切换 mock 演示");
+    setStatus(`标签页音频捕获失败：${state.captureError || "未知错误"}，已切换 mock 演示`);
     socket.send(JSON.stringify({
       type: "mock_start",
       sessionId
@@ -160,7 +182,7 @@ function connectWebSocket(sessionId) {
 }
 
 function handleServerMessage(message) {
-  if (message.type === "connected") {
+  if (message.type === "connected" || message.type === "audio_ready" || message.type === "audio_ack") {
     return;
   }
 
@@ -206,17 +228,50 @@ function sendAudioChunk(message) {
 }
 
 async function startTabAudioCapture(sessionId) {
-  if (!state.activeTabId) {
+  if (!state.pendingStreamId) {
     return false;
   }
 
   const response = await chrome.runtime.sendMessage({
     type: "start_tab_capture",
-    tabId: state.activeTabId,
+    streamId: state.pendingStreamId,
     sessionId
-  }).catch(() => null);
+  }).catch((error) => ({ ok: false, message: error.message }));
 
+  state.captureError = response?.message || state.captureError;
   return Boolean(response?.ok);
+}
+
+function getTabAudioStreamId(tabId) {
+  return new Promise((resolve, reject) => {
+    chrome.tabCapture.getMediaStreamId({ targetTabId: tabId }, (streamId) => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+        return;
+      }
+      if (!streamId) {
+        reject(new Error("未能创建当前标签页音频流"));
+        return;
+      }
+      resolve(streamId);
+    });
+  });
+}
+
+async function ensureSubtitleRuntime() {
+  if (!state.activeTabId) {
+    throw new Error("没有可用的活动标签页");
+  }
+
+  await chrome.scripting.insertCSS({
+    target: { tabId: state.activeTabId },
+    files: ["src/content.css"]
+  }).catch(() => {});
+
+  await chrome.scripting.executeScript({
+    target: { tabId: state.activeTabId },
+    files: ["src/content.js"]
+  });
 }
 
 async function stopTabAudioCapture() {
@@ -240,7 +295,7 @@ function renderHistory() {
   if (segments.length === 0) {
     const empty = document.createElement("p");
     empty.className = "empty-state";
-    empty.textContent = "暂无历史记录";
+    empty.textContent = "暂无历史翻译";
     historyList.appendChild(empty);
     return;
   }

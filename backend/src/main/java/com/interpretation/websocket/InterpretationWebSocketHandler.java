@@ -38,6 +38,8 @@ public class InterpretationWebSocketHandler extends TextWebSocketHandler {
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
+        session.setTextMessageSizeLimit(10 * 1024 * 1024);
+        session.setBinaryMessageSizeLimit(10 * 1024 * 1024);
         String sessionId = queryParams(session.getUri()).get("sessionId");
         if (sessionId == null || sessionService.findSession(sessionId).isEmpty()) {
             sendError(session, sessionId, "SESSION_NOT_FOUND", "Session not found.");
@@ -72,7 +74,12 @@ public class InterpretationWebSocketHandler extends TextWebSocketHandler {
         }
 
         if ("audio_chunk".equals(type)) {
-            mockInterpretationService.handleAudioChunk(socketSession, interpretationSession.get(), root.path("sequence").asInt(-1));
+            mockInterpretationService.handleAudioChunk(
+                    socketSession,
+                    interpretationSession.get(),
+                    root.path("sequence").asInt(-1),
+                    text(root, "payloadBase64")
+            );
             return;
         }
 

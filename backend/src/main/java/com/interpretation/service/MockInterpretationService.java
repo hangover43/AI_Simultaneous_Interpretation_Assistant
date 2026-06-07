@@ -22,13 +22,19 @@ public class MockInterpretationService {
 
     private final ObjectMapper objectMapper;
     private final InterpretationAiProvider aiProvider;
+    private final WhisperAsrService whisperAsrService;
     private final ScheduledExecutorService executorService = Executors.newScheduledThreadPool(2);
     private final ConcurrentMap<String, AtomicInteger> chunkCounters = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, AtomicInteger> segmentCounters = new ConcurrentHashMap<>();
 
-    public MockInterpretationService(ObjectMapper objectMapper, InterpretationAiProvider aiProvider) {
+    public MockInterpretationService(
+            ObjectMapper objectMapper,
+            InterpretationAiProvider aiProvider,
+            WhisperAsrService whisperAsrService
+    ) {
         this.objectMapper = objectMapper;
         this.aiProvider = aiProvider;
+        this.whisperAsrService = whisperAsrService;
     }
 
     public void startAudioStream(WebSocketSession socketSession, InterpretationSession interpretationSession) {
@@ -41,12 +47,34 @@ public class MockInterpretationService {
         send(socketSession, ready);
     }
 
-    public void handleAudioChunk(WebSocketSession socketSession, InterpretationSession interpretationSession, int sequence) {
+    public void handleAudioChunk(
+            WebSocketSession socketSession,
+            InterpretationSession interpretationSession,
+            int sequence,
+            String payloadBase64
+    ) {
         sendAudioAck(socketSession, interpretationSession.sessionId(), sequence);
 
         int chunkCount = chunkCounters
                 .computeIfAbsent(interpretationSession.sessionId(), ignored -> new AtomicInteger(0))
                 .incrementAndGet();
+
+        var transcript = whisperAsrService.transcribe(interpretationSession.sessionId(), sequence, payloadBase64);
+        if (transcript.isPresent()) {
+            Segment segment = aiProvider.translateText(
+                    interpretationSession,
+                    "seg_asr_" + String.format("%03d", sequence),
+                    transcript.get()
+            );
+            sendFinalSegment(socketSession, interpretationSession, segment);
+            aiProvider.revisionFor(interpretationSession, segment)
+                    .ifPresent(revised -> executorService.schedule(
+                            () -> sendRevision(socketSession, interpretationSession, revised),
+                            2400L,
+                            TimeUnit.MILLISECONDS
+                    ));
+            return;
+        }
 
         if (chunkCount % 3 != 0) {
             return;

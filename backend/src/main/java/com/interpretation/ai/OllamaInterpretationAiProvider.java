@@ -32,7 +32,7 @@ public class OllamaInterpretationAiProvider implements InterpretationAiProvider 
         this.objectMapper = objectMapper;
         this.properties = properties;
         this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(10))
+                    .connectTimeout(Duration.ofSeconds(30))
                 .build();
     }
 
@@ -67,18 +67,18 @@ public class OllamaInterpretationAiProvider implements InterpretationAiProvider 
         }
 
         String prompt = """
-                你是实时同声传译系统的译文修正器。
-                请根据 topic 和术语表，优化下面这条中文译文。
-                只输出修正后的中文译文，不要解释。
+                You are the refinement module of a real-time interpretation system.
+                Improve the Chinese subtitle using the topic and glossary.
+                Output only the revised Simplified Chinese subtitle. Do not explain.
 
                 Topic: %s
-                术语表:
+                Glossary:
                 %s
 
-                原文:
+                Source:
                 %s
 
-                当前译文:
+                Current Chinese subtitle:
                 %s
                 """.formatted(session.topic(), glossaryText(session.glossary()), segment.sourceText(), segment.translation());
 
@@ -88,16 +88,15 @@ public class OllamaInterpretationAiProvider implements InterpretationAiProvider 
 
     private Segment translated(String id, String sourceText, InterpretationSession session) {
         String prompt = """
-                你是实时同声传译系统的翻译模块。
-                请将下面的原文翻译为简体中文，要求准确、自然、适合字幕显示。
-                如果术语表中存在对应术语，请优先使用术语表译法。
-                只输出中文译文，不要解释。
+                Translate the source text into Simplified Chinese for real-time subtitles.
+                Use the glossary when applicable.
+                Output only the Chinese translation. Do not explain.
 
                 Topic: %s
-                术语表:
+                Glossary:
                 %s
 
-                原文:
+                Source:
                 %s
                 """.formatted(session.topic(), glossaryText(session.glossary()), sourceText);
 
@@ -109,7 +108,6 @@ public class OllamaInterpretationAiProvider implements InterpretationAiProvider 
             ObjectNode requestBody = objectMapper.createObjectNode();
             requestBody.put("model", properties.getModel());
             requestBody.put("stream", false);
-            requestBody.put("think", false);
             ArrayNode messages = requestBody.putArray("messages");
             ObjectNode userMessage = messages.addObject();
             userMessage.put("role", "user");
@@ -117,7 +115,7 @@ public class OllamaInterpretationAiProvider implements InterpretationAiProvider 
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(properties.getBaseUrl() + "/api/chat"))
-                    .timeout(Duration.ofSeconds(60))
+                    .timeout(Duration.ofSeconds(180))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(requestBody)))
                     .build();

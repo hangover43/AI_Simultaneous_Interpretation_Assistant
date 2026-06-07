@@ -3,6 +3,7 @@ let mediaRecorder = null;
 let audioElement = null;
 let sequence = 0;
 let activeSessionId = null;
+let recordedChunks = [];
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.type === "offscreen_start_capture") {
@@ -43,8 +44,15 @@ async function startCapture(streamId, sessionId) {
     : undefined;
 
   mediaRecorder = new MediaRecorder(mediaStream, options);
-  mediaRecorder.ondataavailable = handleAudioChunk;
-  mediaRecorder.start(1000);
+  mediaRecorder.ondataavailable = (event) => {
+    if (event.data && event.data.size > 0) {
+      recordedChunks.push(event.data);
+    }
+  };
+  mediaRecorder.onstop = handleRecorderStop;
+  recordedChunks = [];
+  mediaRecorder.start();
+  scheduleSegmentStop();
 }
 
 function stopCapture() {
@@ -52,6 +60,7 @@ function stopCapture() {
     mediaRecorder.stop();
   }
   mediaRecorder = null;
+  recordedChunks = [];
 
   if (mediaStream) {
     for (const track of mediaStream.getTracks()) {
@@ -68,12 +77,14 @@ function stopCapture() {
   activeSessionId = null;
 }
 
-async function handleAudioChunk(event) {
-  if (!event.data || event.data.size === 0 || !activeSessionId) {
+async function handleRecorderStop() {
+  if (!activeSessionId || recordedChunks.length === 0) {
     return;
   }
 
-  const payloadBase64 = await blobToBase64(event.data);
+  const segmentBlob = new Blob(recordedChunks, { type: mediaRecorder?.mimeType || "audio/webm" });
+  recordedChunks = [];
+  const payloadBase64 = await blobToBase64(segmentBlob);
   await chrome.runtime.sendMessage({
     type: "audio_chunk",
     sessionId: activeSessionId,
@@ -81,6 +92,29 @@ async function handleAudioChunk(event) {
     timestampMs: Date.now(),
     payloadBase64
   }).catch(() => {});
+
+  if (mediaStream && activeSessionId) {
+    const options = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+      ? { mimeType: "audio/webm;codecs=opus" }
+      : undefined;
+    mediaRecorder = new MediaRecorder(mediaStream, options);
+    mediaRecorder.ondataavailable = (event) => {
+      if (event.data && event.data.size > 0) {
+        recordedChunks.push(event.data);
+      }
+    };
+    mediaRecorder.onstop = handleRecorderStop;
+    mediaRecorder.start();
+    scheduleSegmentStop();
+  }
+}
+
+function scheduleSegmentStop() {
+  setTimeout(() => {
+    if (mediaRecorder && mediaRecorder.state === "recording") {
+      mediaRecorder.stop();
+    }
+  }, 5000);
 }
 
 function keepTabAudioAudible(stream) {

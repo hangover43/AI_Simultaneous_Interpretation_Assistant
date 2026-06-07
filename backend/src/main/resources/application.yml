@@ -9,4 +9,12 @@ ai:
   provider: mock
   ollama:
     base-url: http://127.0.0.1:11434
-    model: translategemma:12b
+    model: qwen2.5:3b
+
+asr:
+  whisper:
+    enabled: true
+    ffmpeg-path: ffmpeg
+    cli-path: ../tools/whisper.cpp/Release/whisper-cli.exe
+    model-path: ../tools/whisper.cpp/models/ggml-base.bin
+    timeout-seconds: 120

@@ -6,7 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class OllamaProperties {
 
     private String baseUrl = "http://127.0.0.1:11434";
-    private String model = "translategemma:12b";
+    private String model = "qwen2.5:3b";
 
     public String getBaseUrl() {
         return baseUrl;

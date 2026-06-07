@@ -88,7 +88,7 @@ class SessionApiTest {
         mockMvc.perform(get("/api/ai/provider"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.provider").value("mock"))
-                .andExpect(jsonPath("$.model").value("translategemma:12b"))
+                .andExpect(jsonPath("$.model").value("qwen2.5:3b"))
                 .andExpect(jsonPath("$.baseUrl").value("http://127.0.0.1:11434"));
     }
 
